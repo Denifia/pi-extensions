@@ -1,0 +1,22 @@
+{
+  "name": "@denifia/pi-copilot-multiplier",
+  "version": "0.1.0",
+  "description": "Show GitHub Copilot premium request multipliers for supported models inside pi.",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Denifia/pi-extensions.git",
+    "directory": "packages/pi-copilot-multiplier"
+  },
+  "files": [
+    "extensions"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@denifia/pi-windows-bash-guard",
+  "version": "0.1.0",
+  "description": "Guard pi's bash tool on Windows from cmd.exe habits and unsafe assumptions.",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Denifia/pi-extensions.git",
+    "directory": "packages/pi-windows-bash-guard"
+  },
+  "files": [
+    "extensions"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  }
+}

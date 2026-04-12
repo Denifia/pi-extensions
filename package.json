@@ -1,0 +1,10 @@
+{
+  "name": "pi-extensions-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Monorepo for Denifia pi extensions",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ]
+}
