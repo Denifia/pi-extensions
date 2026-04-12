@@ -1,10 +1,20 @@
 {
-  "name": "pi-extensions-monorepo",
-  "private": true,
-  "version": "0.0.0",
-  "description": "Monorepo for Denifia pi extensions",
+  "name": "@denifia/pi-extensions",
+  "version": "0.1.0",
+  "description": "Denifia's pi extensions",
+  "keywords": [
+    "pi-package"
+  ],
   "license": "MIT",
-  "workspaces": [
-    "packages/*"
-  ]
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Denifia/pi-extensions.git"
+  },
+  "pi": {
+    "extensions": [
+      "./pi-copilot-multiplier/copilot-multiplier.ts",
+      "./pi-delegate/delegate.ts",
+      "./pi-windows-bash-guard/windows-bash-guard.ts"
+    ]
+  }
 }
