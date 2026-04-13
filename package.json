@@ -14,7 +14,8 @@
     "extensions": [
       "./pi-copilot-multiplier/copilot-multiplier.ts",
       "./pi-delegate/delegate.ts",
-      "./pi-windows-bash-guard/windows-bash-guard.ts"
+      "./pi-windows-bash-guard/windows-bash-guard.ts",
+      "./pi-debrief/debrief.ts"
     ]
   }
 }

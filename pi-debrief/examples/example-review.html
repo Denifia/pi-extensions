@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Review: Payment Service Refactor (PR #247) — pi debrief</title>
+<style>
+  :root {
+    --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+    --text:#e6edf3;--muted:#8b949e;--accent:#d29922;--accent-bg:#3a2d0f;--radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.7;padding:2rem 1rem}
+  .page{max-width:860px;margin:0 auto;display:grid;gap:1.25rem}
+  .brief-header{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:var(--radius);padding:1.75rem}
+  .header-top{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.9rem}
+  .badge-type{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .75rem;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.04em;background:var(--accent-bg);color:var(--accent)}
+  .badge-version{padding:.25rem .65rem;border-radius:20px;font-size:.72rem;font-weight:700;background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+  h1.brief-title{font-size:1.45rem;color:var(--text);font-weight:700;line-height:1.3}
+  .header-meta{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.65rem}
+  .badge-meta{font-size:.74rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.2rem .55rem}
+  .brief-summary{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .summary-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:700;margin-bottom:.55rem}
+  .brief-summary p{font-size:.97rem;color:var(--text);line-height:1.8;margin-bottom:.5rem}
+  .brief-summary p:last-child{margin-bottom:0}
+  .brief-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:.85rem;padding-bottom:.45rem;border-bottom:1px solid var(--border)}
+  .section-body p{color:var(--muted);font-size:.92rem;margin-bottom:.55rem;line-height:1.7}
+  .section-body p:last-child{margin-bottom:0}
+  .section-body ul,.section-body ol{padding-left:1.4rem;color:var(--muted);font-size:.92rem;display:grid;gap:.3rem;margin:.35rem 0}
+  .section-body li{line-height:1.65}
+  .section-body h4{font-size:.88rem;color:var(--text);margin:.8rem 0 .35rem;font-weight:600}
+  .section-body strong{color:var(--text)}.section-body em{color:var(--text);font-style:italic}
+  .section-body code{background:var(--surface2);padding:.1rem .35rem;border-radius:4px;font-family:"Cascadia Code","Fira Code",monospace;font-size:.82rem;color:#79c0ff}
+  footer{text-align:center;color:var(--muted);font-size:.73rem;padding-top:.35rem}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brief-header">
+    <div class="header-top">
+      <span class="badge-type">🔎 Review</span>
+      <span class="badge-version">v1</span>
+    </div>
+    <h1 class="brief-title">Code Review: Payment Service Refactor (PR #247)</h1>
+    <div class="header-meta">
+      <span class="badge-meta">📁 payments</span>
+      <span class="badge-meta">🏷 payment-service-review</span>
+      <span class="badge-meta">📅 Sat, 11 Apr 2026, 11:00 am</span>
+      <span class="badge-meta">2026-04-11-1100-payment-service-review.html</span>
+    </div>
+  </div>
+  <div class="brief-summary">
+    <div class="summary-label">Summary</div>
+    <p>Reviewed the payment service refactor introducing a Strategy pattern for payment providers. The abstraction is sound and test coverage is strong at 94%. Three issues need addressing before merge: a missing idempotency key on retries, insufficient error classification, and a Stripe-specific assumption leaking into the abstract interface.</p>
+  </div>
+    <section class="brief-section">
+      <h2 class="section-heading">Issues found</h2>
+      <div class="section-body"><p><strong>Critical</strong></p><ul><li><code>PaymentProcessor.retry()</code> does not pass the original idempotency key. A network timeout followed by retry will create a duplicate charge. Stripe and Braintree both support idempotency keys — this must be threaded through.</li></ul><p><strong>Significant</strong></p><ul><li><code>PaymentError</code> is a single class with a <code>code</code> string. Downstream callers need to distinguish retriable errors (network timeout, rate limit) from terminal ones (card declined) without string matching. Add a <code>retriable: boolean</code> field or use subclasses.</li><li><code>PaymentProvider</code> interface has a <code>getWebhookSecret()</code> method — this is Stripe-specific. Braintree uses a different verification mechanism.</li></ul><p><strong>Minor</strong></p><ul><li><code>src/providers/stripe.ts</code> line 142: <code>amount * 100</code> converts to cents but is undocumented and breaks for currencies without cent subdivision (JPY, KWD).</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">What's good</h2>
+      <div class="section-body"><ul><li>Strategy pattern is well-suited here and the abstraction boundary is clean</li><li>Test coverage is 94% on the new provider code — notably better than what it replaced</li><li>Error messages are human-readable and include correlation IDs</li><li>Provider factory with environment-based selection is the right approach</li><li>Dependency injection throughout makes testing straightforward</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Recommendations</h2>
+      <div class="section-body"><ol><li>Fix the idempotency key issue before merge — this is a correctness bug in production</li><li>Decide on error classification strategy (boolean flag vs subclasses) and apply consistently</li><li>Move <code>getWebhookSecret()</code> out of the abstract interface — put it in a <code>StripeProvider</code>-specific interface</li><li>Add a currency helper before the Braintree integration lands</li></ol></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Priority fixes</h2>
+      <div class="section-body"><ol><li><strong>[Blocker]</strong> Idempotency key on retry — fix in <code>src/payment/processor.ts</code></li><li><strong>[Should fix]</strong> Error classification — add <code>retriable</code> flag to <code>PaymentError</code></li><li><strong>[Should fix]</strong> Remove <code>getWebhookSecret()</code> from <code>PaymentProvider</code> interface</li><li><strong>[Nice to have]</strong> Currency conversion helper with a comment</li></ol></div>
+    </section>
+  <footer>pi-debrief · /repo/.pi/reports/2026-04-11-1100-payment-service-review.html</footer>
+</div>
+</body>
+</html>

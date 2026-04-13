@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User Notifications Feature — Requirements Scoping — pi debrief</title>
+<style>
+  :root {
+    --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+    --text:#e6edf3;--muted:#8b949e;--accent:#39c5cf;--accent-bg:#1a2d3a;--radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.7;padding:2rem 1rem}
+  .page{max-width:860px;margin:0 auto;display:grid;gap:1.25rem}
+  .brief-header{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:var(--radius);padding:1.75rem}
+  .header-top{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.9rem}
+  .badge-type{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .75rem;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.04em;background:var(--accent-bg);color:var(--accent)}
+  .badge-version{padding:.25rem .65rem;border-radius:20px;font-size:.72rem;font-weight:700;background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+  h1.brief-title{font-size:1.45rem;color:var(--text);font-weight:700;line-height:1.3}
+  .header-meta{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.65rem}
+  .badge-meta{font-size:.74rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.2rem .55rem}
+  .brief-summary{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .summary-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:700;margin-bottom:.55rem}
+  .brief-summary p{font-size:.97rem;color:var(--text);line-height:1.8;margin-bottom:.5rem}
+  .brief-summary p:last-child{margin-bottom:0}
+  .brief-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:.85rem;padding-bottom:.45rem;border-bottom:1px solid var(--border)}
+  .section-body p{color:var(--muted);font-size:.92rem;margin-bottom:.55rem;line-height:1.7}
+  .section-body p:last-child{margin-bottom:0}
+  .section-body ul,.section-body ol{padding-left:1.4rem;color:var(--muted);font-size:.92rem;display:grid;gap:.3rem;margin:.35rem 0}
+  .section-body li{line-height:1.65}
+  .section-body h4{font-size:.88rem;color:var(--text);margin:.8rem 0 .35rem;font-weight:600}
+  .section-body strong{color:var(--text)}.section-body em{color:var(--text);font-style:italic}
+  .section-body code{background:var(--surface2);padding:.1rem .35rem;border-radius:4px;font-family:"Cascadia Code","Fira Code",monospace;font-size:.82rem;color:#79c0ff}
+  footer{text-align:center;color:var(--muted);font-size:.73rem;padding-top:.35rem}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brief-header">
+    <div class="header-top">
+      <span class="badge-type">📋 Requirements</span>
+      <span class="badge-version">v1</span>
+    </div>
+    <h1 class="brief-title">User Notifications Feature — Requirements Scoping</h1>
+    <div class="header-meta">
+      <span class="badge-meta">📁 platform</span>
+      <span class="badge-meta">🏷 notifications-feature</span>
+      <span class="badge-meta">📅 Thu, 9 Apr 2026, 01:30 pm</span>
+      <span class="badge-meta">2026-04-09-1330-notifications-feature.html</span>
+    </div>
+  </div>
+  <div class="brief-summary">
+    <div class="summary-label">Summary</div>
+    <p>Scoped the user notifications feature for Q2. Functional requirements cover in-app, email, and push channels with per-user preference controls. The main non-functional risk is the in-app delivery latency SLA under peak load — the current WebSocket infrastructure will not scale to target volume and needs an architecture decision before sprint 1.</p>
+  </div>
+    <section class="brief-section">
+      <h2 class="section-heading">Functional requirements</h2>
+      <div class="section-body"><ul><li>Users receive notifications via three channels: <strong>in-app</strong> (bell icon), <strong>email</strong>, and <strong>push</strong> (mobile)</li><li>Users can enable/disable each channel independently per notification type</li><li>Notification types for v1: mention, comment reply, task assigned, task completed, system alert</li><li>In-app: real-time via WebSocket; unread badge count; mark-as-read individually or all-at-once</li><li>Email: digest mode (immediate, hourly, daily) configurable per type; HTML template with CAN-SPAM unsubscribe link</li><li>Push: requires FCM/APNs token registration flow in mobile clients; deep-link support</li><li>Admins can send system-wide announcements to all users or user segments</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Non-functional requirements</h2>
+      <div class="section-body"><ul><li>In-app delivery: <strong>&lt;2 s</strong> p99 from event to client display</li><li>Email delivery: <strong>&lt;5 min</strong> p99 for immediate mode; digest within 5 min of scheduled window</li><li>Push delivery: best-effort, no SLA (subject to FCM/APNs)</li><li>Preferences API: &lt;200 ms p95</li><li>System must handle 10× current notification volume without degradation</li><li>Notification history retained for 90 days per data retention policy</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Assumptions</h2>
+      <div class="section-body"><ul><li>Mobile clients (iOS + Android) will implement the push token registration flow — out of scope for backend team</li><li>Current email service provider (SendGrid) has capacity for projected volume</li><li>In-app notifications are fire-and-forget for WebSocket — offline users do not receive missed notifications on reconnect</li><li>A single preference store is sufficient — no team-level overrides of individual preferences</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Out of scope</h2>
+      <div class="section-body"><ul><li>SMS notifications (requested but deferred to v2)</li><li>Notification analytics dashboard (open rates, click-through) — analytics team to own</li><li>A/B testing notification copy</li><li>Notification scheduling (send at specific time) — deferred</li><li>Read receipts for push notifications</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Risks</h2>
+      <div class="section-body"><ul><li><strong>Delivery latency under peak load</strong>: the &lt;2 s in-app SLA requires a dedicated WebSocket service or broker with guaranteed ordering. Current infrastructure reuses the API server for WebSocket and will not scale to 10×. Architecture decision needed before sprint 1.</li><li><strong>Email volume and cost</strong>: immediate-mode email for all notification types could generate significant SendGrid cost. Volume modelling needed before broad rollout.</li><li><strong>Preference schema evolution</strong>: adding notification types post-launch requires a migration strategy. Schema must account for this from the start.</li></ul></div>
+    </section>
+  <footer>pi-debrief · /repo/.pi/reports/2026-04-09-1330-notifications-feature.html</footer>
+</div>
+</body>
+</html>

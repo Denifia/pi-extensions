@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fix Memory Leak Causing OOM Crashes in Worker Pool — pi debrief</title>
+<style>
+  :root {
+    --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+    --text:#e6edf3;--muted:#8b949e;--accent:#f85149;--accent-bg:#2d1a1a;--radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.7;padding:2rem 1rem}
+  .page{max-width:860px;margin:0 auto;display:grid;gap:1.25rem}
+  .brief-header{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:var(--radius);padding:1.75rem}
+  .header-top{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.9rem}
+  .badge-type{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .75rem;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.04em;background:var(--accent-bg);color:var(--accent)}
+  .badge-version{padding:.25rem .65rem;border-radius:20px;font-size:.72rem;font-weight:700;background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+  h1.brief-title{font-size:1.45rem;color:var(--text);font-weight:700;line-height:1.3}
+  .header-meta{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.65rem}
+  .badge-meta{font-size:.74rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.2rem .55rem}
+  .brief-summary{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .summary-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);font-weight:700;margin-bottom:.55rem}
+  .brief-summary p{font-size:.97rem;color:var(--text);line-height:1.8;margin-bottom:.5rem}
+  .brief-summary p:last-child{margin-bottom:0}
+  .brief-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem}
+  .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-bottom:.85rem;padding-bottom:.45rem;border-bottom:1px solid var(--border)}
+  .section-body p{color:var(--muted);font-size:.92rem;margin-bottom:.55rem;line-height:1.7}
+  .section-body p:last-child{margin-bottom:0}
+  .section-body ul,.section-body ol{padding-left:1.4rem;color:var(--muted);font-size:.92rem;display:grid;gap:.3rem;margin:.35rem 0}
+  .section-body li{line-height:1.65}
+  .section-body h4{font-size:.88rem;color:var(--text);margin:.8rem 0 .35rem;font-weight:600}
+  .section-body strong{color:var(--text)}.section-body em{color:var(--text);font-style:italic}
+  .section-body code{background:var(--surface2);padding:.1rem .35rem;border-radius:4px;font-family:"Cascadia Code","Fira Code",monospace;font-size:.82rem;color:#79c0ff}
+  footer{text-align:center;color:var(--muted);font-size:.73rem;padding-top:.35rem}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brief-header">
+    <div class="header-top">
+      <span class="badge-type">🐛 Debug</span>
+      <span class="badge-version">v1</span>
+    </div>
+    <h1 class="brief-title">Fix Memory Leak Causing OOM Crashes in Worker Pool</h1>
+    <div class="header-meta">
+      <span class="badge-meta">📁 data-pipeline</span>
+      <span class="badge-meta">🏷 worker-pool-memory-leak</span>
+      <span class="badge-meta">📅 Mon, 13 Apr 2026, 08:20 am</span>
+      <span class="badge-meta">2026-04-13-0820-worker-pool-memory-leak.html</span>
+    </div>
+  </div>
+  <div class="brief-summary">
+    <div class="summary-label">Summary</div>
+    <p>Identified and fixed a memory leak in the async worker pool that caused RSS to grow ~40 MB/hour under normal load, leading to OOM kills after ~6 hours. Root cause was unclosed <code>EventEmitter</code> listeners accumulating on a shared <code>jobQueue</code> instance per worker restart. Fix reduces memory growth to baseline.</p>
+  </div>
+    <section class="brief-section">
+      <h2 class="section-heading">Root cause</h2>
+      <div class="section-body"><p>Each time a worker process crashed and restarted, <code>WorkerPool._bindWorkerEvents(worker)</code> attached new <code>message</code>, <code>error</code>, and <code>exit</code> listeners to the shared <code>this.jobQueue</code> EventEmitter without removing the old ones.</p><p>After ~200 restarts (common under sustained load), the queue had 600+ active listeners all holding closures over stale worker instances. Node.js emitted <code>MaxListenersExceeded</code> warnings but these were suppressed by an overly broad <code>winston</code> filter.</p></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">What was tried</h2>
+      <div class="section-body"><ul><li>Added heap snapshots at 1-hour intervals — confirmed growth in <code>EventEmitter</code> listener arrays</li><li>Bisected git history — leak introduced in commit <code>a3f92c1</code> (&quot;refactor worker lifecycle&quot;) 3 weeks ago</li><li>Checked for promise leaks via <code>--track-heap-objects</code> — not the cause</li><li>Reviewed Redis connection pooling — correctly bounded, not the source</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Fix applied</h2>
+      <div class="section-body"><p>In <code>src/workers/pool.ts</code>, <code>_bindWorkerEvents()</code> now calls <code>_unbindWorkerEvents(worker)</code> before attaching new listeners. Added a <code>_listenerMap: Map&lt;Worker, Function[]&gt;</code> to track attached listeners per worker for clean removal.</p><p>Also fixed the <code>winston</code> filter to pass through Node.js process warnings — these should have surfaced weeks ago.</p><p><strong>Changed files:</strong></p><ul><li><code>src/workers/pool.ts</code> — unbind before rebind, listener tracking map</li><li><code>src/logging/filters.ts</code> — remove overly broad warning suppression</li></ul></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">How to verify</h2>
+      <div class="section-body"><ol><li>Run <code>npm run stress-test</code> (500 req/min for 2 hours, deliberate worker crashes every 5 min)</li><li>Monitor RSS via <code>process.memoryUsage()</code> endpoint</li><li>Pass: RSS stabilises below 180 MB, grows less than 5 MB/hour</li><li>Previous behaviour: ~40 MB/hour growth, OOM at ~6 hours</li></ol></div>
+    </section>
+    <section class="brief-section">
+      <h2 class="section-heading">Recurrence risk</h2>
+      <div class="section-body"><p><strong>Medium</strong> — the pattern (attaching listeners inside a restart handler without cleanup) is easy to reintroduce.</p><ul><li>Added <code>setMaxListeners(10)</code> guard on <code>jobQueue</code> — will throw before listener count becomes problematic</li><li>Added a comment block above <code>_bindWorkerEvents</code> explaining the invariant</li><li>Consider a test that asserts listener count stays bounded during a restart cycle</li></ul></div>
+    </section>
+  <footer>pi-debrief · /repo/.pi/reports/2026-04-13-0820-worker-pool-memory-leak.html</footer>
+</div>
+</body>
+</html>
