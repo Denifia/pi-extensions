@@ -1,26 +1,22 @@
 /**
- * pi-debrief — Automatic HTML briefing documents for significant pi tasks
+ * pi-debrief — HTML briefing documents for pi tasks
  *
- * At the end of significant work, the LLM calls write_html_report with
- * structured content. The extension renders it into a styled, self-contained
- * HTML page and saves it to:
- *   - <git-root>/.pi/reports/  (when inside a git repo)
- *   - ~/.pi/reports/           (otherwise)
+ * Call write_debrief to save a styled HTML brief to:
+ *   - <git-root>/.pi/debriefs/  (when inside a git repo)
+ *   - ~/.pi/debriefs/           (otherwise)
  *
  * Files are named YYYY-MM-DD-HHmm-<slug>.html. Multiple files sharing a
  * slug are displayed as versions when browsing with /debriefs.
  *
  * Commands:
- *   /debriefs                  List and open briefs; /debriefs on|off to toggle
- *   /briefs                    Alias for /debriefs
- *   /debrief                   Ask the model to write a brief right now
- *   /debrief-attach <slug>     Cross-session: attach this session to an existing slug
+ *   /debriefs        List and open briefs
+ *   /debrief         Ask the model to write a brief right now
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { mkdir, writeFile, readdir, appendFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
@@ -71,57 +67,30 @@ interface RenderParams {
 // ─── Extension ────────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	// Per-session state
-	let reportsDir: string | null = null;
-	let sessionSlugs: string[] = [];
-	let noReport = false;
-	let setupDone = false;
+	let debriefDir: string | null = null;
 
 	// ── Helpers ──────────────────────────────────────────────────────────────
 
-	async function resolveReportsDir(cwd: string): Promise<string> {
-		if (reportsDir) return reportsDir;
+	async function resolveDebriefDir(cwd: string): Promise<string> {
+		if (debriefDir) return debriefDir;
 
 		const gitResult = await pi.exec("git", ["-C", cwd, "rev-parse", "--show-toplevel"]);
-		let dir: string;
-
-		if (gitResult.code === 0) {
-			const gitRoot = gitResult.stdout.trim();
-			dir = join(gitRoot, ".pi", "reports");
-			await ensureGitignore(gitRoot);
-		} else {
-			dir = join(homedir(), ".pi", "reports");
-		}
+		const dir = gitResult.code === 0
+			? join(gitResult.stdout.trim(), ".pi", "debriefs")
+			: join(homedir(), ".pi", "debriefs");
 
 		await mkdir(dir, { recursive: true });
-		reportsDir = dir;
+		debriefDir = dir;
 		return dir;
 	}
 
-	async function ensureGitignore(gitRoot: string): Promise<void> {
-		const gitignorePath = join(gitRoot, ".gitignore");
-		const entry = ".pi/reports/";
-		try {
-			if (existsSync(gitignorePath)) {
-				const content = await readFile(gitignorePath, "utf-8");
-				// Skip if .pi/ or .pi/reports is already covered
-				if (content.split("\n").some((l) => l.trim() === ".pi/" || l.trim() === entry || l.trim() === ".pi/reports")) return;
-				await appendFile(gitignorePath, `\n# pi-debrief\n${entry}\n`);
-			} else {
-				await writeFile(gitignorePath, `# pi-debrief\n${entry}\n`, "utf-8");
-			}
-		} catch {
-			// Non-fatal — gitignore update is best-effort
-		}
-	}
-
-	async function listReports(cwd: string): Promise<ReportFile[]> {
+	async function listDebriefs(cwd: string): Promise<ReportFile[]> {
 		const results: ReportFile[] = [];
 
-		const globalDir = join(homedir(), ".pi", "reports");
+		const globalDir = join(homedir(), ".pi", "debriefs");
 		const gitResult = await pi.exec("git", ["-C", cwd, "rev-parse", "--show-toplevel"]);
 		const projectDir =
-			gitResult.code === 0 ? join(gitResult.stdout.trim(), ".pi", "reports") : null;
+			gitResult.code === 0 ? join(gitResult.stdout.trim(), ".pi", "debriefs") : null;
 
 		const sources: Array<{ dir: string; location: "project" | "global" }> = [];
 		if (projectDir && existsSync(projectDir)) {
@@ -164,22 +133,21 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("xdg-open", [filepath]);
 			}
 		} catch {
-			// Non-fatal — user can open via /briefs
+			// Non-fatal
 		}
 	}
 
-	// Shared list handler for /debriefs and /briefs alias
 	async function listBriefsHandler(_args: string, ctx: ExtensionCommandContext): Promise<void> {
-		const reports = await listReports(ctx.cwd);
+		const briefs = await listDebriefs(ctx.cwd);
 
-		if (reports.length === 0) {
-			ctx.ui.notify("No briefs found yet — complete a significant task and one will appear here.", "info");
+		if (briefs.length === 0) {
+			ctx.ui.notify("No briefs found yet. Use /debrief to write one.", "info");
 			return;
 		}
 
 		// Group by location+slug, preserving newest-first order within each group
 		const groups = new Map<string, ReportFile[]>();
-		for (const r of reports) {
+		for (const r of briefs) {
 			const key = `${r.location}::${r.slug}`;
 			if (!groups.has(key)) groups.set(key, []);
 			groups.get(key)!.push(r);
@@ -234,61 +202,12 @@ export default function (pi: ExtensionAPI) {
 		await openInBrowser(files[vIdx].filepath);
 	}
 
-	// ── Lifecycle ─────────────────────────────────────────────────────────────
-
-	pi.on("session_start", async (_event, ctx) => {
-		reportsDir = null;
-		sessionSlugs = [];
-		noReport = false;
-		setupDone = false;
-
-		// Restore persisted state from session entries
-		for (const entry of ctx.sessionManager.getEntries()) {
-			if (entry.type !== "custom") continue;
-			if (entry.customType === "pi-debrief-slugs") {
-				sessionSlugs = ((entry.data as any)?.slugs as string[]) ?? [];
-			}
-			if (entry.customType === "pi-debrief-no-report") {
-				noReport = ((entry.data as any)?.value as boolean) ?? false;
-			}
-		}
-	});
-
-	pi.on("before_agent_start", async (event, ctx) => {
-		// One-time dir + gitignore setup per session
-		if (!setupDone) {
-			try {
-				await resolveReportsDir(ctx.cwd);
-			} catch {
-				// Non-fatal
-			}
-			setupDone = true;
-		}
-
-		// If no-report is toggled, inject nothing
-		if (noReport) return;
-
-		// If briefs were already written this session, remind the model of the active slugs
-		if (sessionSlugs.length === 0) return;
-
-		const slugList = sessionSlugs.join(", ");
-		return {
-			systemPrompt:
-				event.systemPrompt +
-				`\n\n[pi-debrief] Brief slugs active this session: ${slugList}. Reuse a slug when calling write_html_report for follow-up work on the same topic.`,
-		};
-	});
-
 	// ── Tool ──────────────────────────────────────────────────────────────────
 
 	pi.registerTool({
-		name: "write_html_report",
+		name: "write_debrief",
 		label: "Write Brief",
-		description: `Writes a styled, self-contained HTML briefing document summarising completed work. Saves to the project or global reports directory and opens in the browser.
-
-Call after completing significant tasks: feature implementation, bug fixes, planning sessions, architecture decisions, research or analysis, code reviews, debugging investigations, requirements scoping.
-
-Skip for: simple questions, quick lookups, or trivial edits.
+		description: `Writes a styled, self-contained HTML briefing document summarising completed work. Saves to the project or global debriefs directory and opens in the browser.
 
 slug: kebab-case topic identifier (e.g. "rate-limiting", "auth-refactor"). Reuse the same slug for follow-up work on the same topic in this session — this groups the files as versions.
 
@@ -299,12 +218,6 @@ taskType → recommended sections:
   review         → Issues found · What's good · Recommendations · Priority fixes
   debug          → Root cause · What was tried · Fix applied · How to verify · Recurrence risk
   requirements   → Functional requirements · Non-functional requirements · Assumptions · Out of scope · Risks`,
-
-		promptGuidelines: [
-			"Call write_html_report at the end of significant tasks (implementation, planning, research, review, debugging, requirements scoping). Skip for simple questions or quick lookups.",
-			"Reuse the same slug for follow-up work on the same topic within this session — this groups output as a new version.",
-			"Do not write HTML or report files via bash or the write tool — always use write_html_report.",
-		],
 
 		parameters: Type.Object({
 			slug: Type.String({
@@ -325,19 +238,7 @@ taskType → recommended sections:
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (noReport) {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Brief generation is disabled for this session. Use /debriefs on to re-enable.",
-						},
-					],
-					details: {},
-				};
-			}
-
-			const dir = await resolveReportsDir(ctx.cwd);
+			const dir = await resolveDebriefDir(ctx.cwd);
 
 			const now = new Date();
 			const ts = formatTimestamp(now);
@@ -355,12 +256,6 @@ taskType → recommended sections:
 				// Fine — defaults to 0
 			}
 			const versionLabel = `v${existingCount + 1}`;
-
-			// Track slug in session state
-			if (!sessionSlugs.includes(params.slug)) {
-				sessionSlugs.push(params.slug);
-				pi.appendEntry("pi-debrief-slugs", { slugs: [...sessionSlugs] });
-			}
 
 			// Resolve repo name for the brief header
 			let repoName: string | null = null;
@@ -391,39 +286,8 @@ taskType → recommended sections:
 	// ── Commands ──────────────────────────────────────────────────────────────
 
 	pi.registerCommand("debriefs", {
-		description: "List and open briefs. Use /debriefs on|off to enable or disable for this session.",
+		description: "List and open briefing documents",
 		handler: async (args, ctx) => {
-			const arg = args.trim().toLowerCase();
-			if (arg === "on" || arg === "off") {
-				noReport = arg === "off";
-				pi.appendEntry("pi-debrief-no-report", { value: noReport });
-				ctx.ui.notify(
-					noReport
-						? "Brief generation disabled for this session. Use /debriefs on to re-enable."
-						: "Brief generation enabled.",
-					noReport ? "warning" : "success",
-				);
-				return;
-			}
-			await listBriefsHandler(args, ctx);
-		},
-	});
-
-	pi.registerCommand("briefs", {
-		description: "Alias for /debriefs — list and open briefing documents",
-		handler: async (args, ctx) => {
-			const arg = args.trim().toLowerCase();
-			if (arg === "on" || arg === "off") {
-				noReport = arg === "off";
-				pi.appendEntry("pi-debrief-no-report", { value: noReport });
-				ctx.ui.notify(
-					noReport
-						? "Brief generation disabled for this session. Use /debriefs on to re-enable."
-						: "Brief generation enabled.",
-					noReport ? "warning" : "success",
-				);
-				return;
-			}
 			await listBriefsHandler(args, ctx);
 		},
 	});
@@ -431,42 +295,9 @@ taskType → recommended sections:
 	pi.registerCommand("debrief", {
 		description: "Ask the model to write a brief for the current session right now",
 		handler: async (_args, ctx) => {
-			if (noReport) {
-				ctx.ui.notify(
-					"Brief generation is disabled. Use /debriefs on to re-enable.",
-					"warning",
-				);
-				return;
-			}
 			await ctx.waitForIdle();
 			pi.sendUserMessage(
-				"Please write a briefing document now using the write_html_report tool, summarising all significant work done in this session.",
-			);
-		},
-	});
-
-	pi.registerCommand("debrief-attach", {
-		description:
-			"Cross-session versioning: attach this session's work to an existing brief slug. Usage: /debrief-attach <slug>",
-		handler: async (args, ctx) => {
-			const slug = args.trim();
-			if (!slug) {
-				ctx.ui.notify(
-					"Usage: /debrief-attach <slug> — provide the slug of the existing brief to attach to.",
-					"error",
-				);
-				return;
-			}
-			await ctx.waitForIdle();
-
-			// Register slug as active so the tool will count it as a version update
-			if (!sessionSlugs.includes(slug)) {
-				sessionSlugs.push(slug);
-				pi.appendEntry("pi-debrief-slugs", { slugs: [...sessionSlugs] });
-			}
-
-			pi.sendUserMessage(
-				`Please write an updated brief using write_html_report with slug "${slug}", treating this as a continuation of previous work on that topic. Summarise everything done in this session.`,
+				"Please write a briefing document now using the write_debrief tool, summarising all significant work done in this session.",
 			);
 		},
 	});

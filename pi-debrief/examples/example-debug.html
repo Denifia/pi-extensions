@@ -74,7 +74,7 @@
       <h2 class="section-heading">Recurrence risk</h2>
       <div class="section-body"><p><strong>Medium</strong> — the pattern (attaching listeners inside a restart handler without cleanup) is easy to reintroduce.</p><ul><li>Added <code>setMaxListeners(10)</code> guard on <code>jobQueue</code> — will throw before listener count becomes problematic</li><li>Added a comment block above <code>_bindWorkerEvents</code> explaining the invariant</li><li>Consider a test that asserts listener count stays bounded during a restart cycle</li></ul></div>
     </section>
-  <footer>pi-debrief · /repo/.pi/reports/2026-04-13-0820-worker-pool-memory-leak.html</footer>
+  <footer>pi-debrief · /repo/.pi/debriefs/2026-04-13-0820-worker-pool-memory-leak.html</footer>
 </div>
 </body>
 </html>

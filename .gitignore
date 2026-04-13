@@ -1,2 +1,5 @@
 # pi-debrief
-.pi/reports/
+.pi/debriefs/
+
+node_modules/
+**/node_modules/

@@ -195,7 +195,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-12T14:32:00'),
     versionLabel: 'v1',
     repoName: 'api-gateway',
-    filepath: '/repo/.pi/reports/2026-04-12-1432-rate-limiting-api-gateway.html',
+    filepath: '/repo/.pi/debriefs/2026-04-12-1432-rate-limiting-api-gateway.html',
   },
 
   // ── Planning ─────────────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-10T09:15:00'),
     versionLabel: 'v1',
     repoName: 'order-service',
-    filepath: '/repo/.pi/reports/2026-04-10-0915-event-driven-migration.html',
+    filepath: '/repo/.pi/debriefs/2026-04-10-0915-event-driven-migration.html',
   },
 
   // ── Research ─────────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-08T16:45:00'),
     versionLabel: 'v1',
     repoName: 'collab-editor',
-    filepath: '/repo/.pi/reports/2026-04-08-1645-realtime-sync-options.html',
+    filepath: '/repo/.pi/debriefs/2026-04-08-1645-realtime-sync-options.html',
   },
 
   // ── Review ───────────────────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-11T11:00:00'),
     versionLabel: 'v1',
     repoName: 'payments',
-    filepath: '/repo/.pi/reports/2026-04-11-1100-payment-service-review.html',
+    filepath: '/repo/.pi/debriefs/2026-04-11-1100-payment-service-review.html',
   },
 
   // ── Debug ────────────────────────────────────────────────────────────────────
@@ -433,7 +433,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-13T08:20:00'),
     versionLabel: 'v1',
     repoName: 'data-pipeline',
-    filepath: '/repo/.pi/reports/2026-04-13-0820-worker-pool-memory-leak.html',
+    filepath: '/repo/.pi/debriefs/2026-04-13-0820-worker-pool-memory-leak.html',
   },
 
   // ── Requirements ─────────────────────────────────────────────────────────────
@@ -497,7 +497,7 @@ const EXAMPLES = [
     timestamp: new Date('2026-04-09T13:30:00'),
     versionLabel: 'v1',
     repoName: 'platform',
-    filepath: '/repo/.pi/reports/2026-04-09-1330-notifications-feature.html',
+    filepath: '/repo/.pi/debriefs/2026-04-09-1330-notifications-feature.html',
   },
 ];
 
