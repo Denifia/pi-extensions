@@ -1,0 +1,11 @@
+{
+  "name": "pi-hashtag-snippets",
+  "description": "Hashtag-style prompt expansion with live autocomplete for pi",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

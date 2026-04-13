@@ -1,0 +1,26 @@
+# Global hashtag snippets — ~/.pi/agent/hashtag-snippets.yaml
+#
+# Keys become the tag name (letters, digits, underscores only).
+# Values are the full text that replaces #tagname when you submit a prompt.
+# Multiline values use YAML block scalars (| or >).
+#
+# Usage in a prompt:
+#   "Implement the auth module. #brief"
+#   → "Implement the auth module. at the conclusion of your changes make me a brief with the write_debrief tool"
+
+brief: "at the conclusion of your changes make me a brief with the write_debrief tool"
+
+plan: "before starting any changes, lay out a detailed step-by-step plan and wait for my explicit approval"
+
+test: "after making changes, write comprehensive tests covering normal cases, edge cases, and error paths"
+
+safe: "before executing any destructive commands (delete, drop, truncate, rm -rf) confirm with me first"
+
+todoc: |
+  After completing the changes, add or update documentation for all modified public
+  functions, classes, and exports. Include: parameter descriptions, return value,
+  example usage, and any important edge cases or caveats.
+
+review: |
+  At the end, do a self-review pass: check for logic errors, missing error handling,
+  security issues, and anything that could break in production. List any concerns.

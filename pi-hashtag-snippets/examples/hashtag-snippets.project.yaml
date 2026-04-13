@@ -1,0 +1,13 @@
+# Project-level hashtag snippets — .pi/hashtag-snippets.yaml
+#
+# These are merged with your global config. Project keys override global ones
+# with the same name, letting you tailor snippets per repository.
+
+# Project-specific snippets
+changelog: "update CHANGELOG.md with a summary of what changed and why"
+
+migrate: "after making changes, check if a database migration is needed and create one if so"
+
+perf: |
+  After implementing, profile the change if it touches hot paths. Add a comment
+  noting the time complexity. Flag anything that could be slow at scale.
