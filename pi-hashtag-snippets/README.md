@@ -16,12 +16,6 @@ A pi extension that adds **`#tag`-style snippet expansion** to prompts, with liv
 
 ![Expansion diagram](docs/screenshot-expansion.svg)
 
-<!-- Uncomment once you've recorded a demo (see docs/RECORDING-GUIDE.md):
-### Demo Video
-
-![Demo](docs/demo.gif)
--->
-
 ---
 
 ## What it does
@@ -51,6 +45,8 @@ Then add to your `~/.pi/agent/settings.json`:
 ```
 
 Or install the whole `pi-extensions` package — it's already listed in `package.json`.
+
+⚠️ **If pi starts with an extension error:** Make sure you ran `npm install` from the `pi-hashtag-snippets` folder (not just from the root `pi-extensions` folder).
 
 ## Configure
 
@@ -116,10 +112,6 @@ When snippets are loaded, the status bar shows `#N` (the count). Zero snippets =
 - **Chain tags** — `#plan #brief` gives you planning instructions AND a debrief at the end.
 - **Override globals** — use the same key in `.pi/hashtag-snippets.yaml` to specialise a global snippet for this project.
 - **Reload** — `/reload` picks up config changes without restarting pi.
-
-## Recording a Demo
-
-Want to record your own demo GIF or video? See [`docs/RECORDING-GUIDE.md`](docs/RECORDING-GUIDE.md) for a step-by-step script with timing, tool recommendations (VHS, asciinema), and a ready-to-use VHS `.tape` file.
 
 ## Note on `setEditorComponent`
 
