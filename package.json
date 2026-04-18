@@ -16,7 +16,8 @@
       "./pi-delegate/delegate.ts",
       "./pi-windows-bash-guard/windows-bash-guard.ts",
       "./pi-debrief/debrief.ts",
-      "./pi-hashtag-snippets/index.ts"
+      "./pi-hashtag-snippets/index.ts",
+      "./pi-webui/index.ts"
     ]
   }
 }
