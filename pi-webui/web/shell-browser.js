@@ -12,6 +12,25 @@
     reloadTimer: null
   };
 
+  // entryId of a toolResult tree click waiting for ID-patching to complete
+  var pendingScrollTarget = null;
+  // lazily-built Set of toolResult entry IDs for O(1) lookup
+  var toolResultIdSet = null;
+
+  function ensureToolResultIdSet() {
+    if (toolResultIdSet) return toolResultIdSet;
+    toolResultIdSet = new Set();
+    var sd = parseSessionData();
+    if (!sd || !sd.entries) return toolResultIdSet;
+    for (var i = 0; i < sd.entries.length; i++) {
+      var e = sd.entries[i];
+      if (e.type === "message" && e.message && e.message.role === "toolResult") {
+        toolResultIdSet.add(e.id);
+      }
+    }
+    return toolResultIdSet;
+  }
+
   var WEBUI_TOKEN = window.__PI_WEBUI_TOKEN__ || "";
 
   function withToken(path) {
@@ -297,6 +316,18 @@
       ".webui-go-bottom { position: fixed; right: 24px; bottom: 24px; z-index: 2000; background: var(--accent); color: var(--body-bg); border: 1px solid color-mix(in oklab, var(--accent) 70%, black); border-radius: 999px; padding: 8px 12px; cursor: pointer; font: inherit; font-size: 12px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; }",
       ".webui-go-bottom.visible { opacity: 0.95; pointer-events: all; transform: translateY(0); }",
       ".webui-go-bottom:hover { opacity: 1; }",
+      ".skill-item { font-size: 11px; }",
+      ".skill-item.has-details { cursor: pointer; }",
+      ".skill-item-name { font-weight: bold; color: var(--text); }",
+      ".skill-item-desc { color: var(--dim); }",
+      ".skill-details-hint { color: var(--muted); font-style: italic; }",
+      ".skill-details-hint::after { content: '[click to show location]'; }",
+      ".skill-item.details-expanded .skill-details-hint::after { content: '[hide location]'; }",
+      ".skill-details { display: none; margin-top: 4px; margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--dim); }",
+      ".skill-item.details-expanded .skill-details { display: block; }",
+      ".skill-field { margin-bottom: 4px; font-size: 11px; }",
+      ".skill-field-name { font-weight: bold; color: var(--text); }",
+      ".skill-field-value { color: var(--dim); word-break: break-all; }",
       ".tool-execution.clicked-highlight { box-shadow: 0 0 0 2px var(--accent, #2196f3); transition: box-shadow 0.7s ease-out; }",
       ".tool-execution.clicked-highlight-fade { box-shadow: 0 0 0 0 transparent; transition: box-shadow 0.7s ease-out; }"
     ].join("\n");
@@ -310,6 +341,23 @@
   // Fix: after each render, assign the correct id to .tool-execution blocks so the core
   // highlight/scroll logic finds them.
 
+  // --- Helpers for shell-side rendering (can't access template.js IIFE scope) ---
+
+  function shellEscapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function shellFormatTimestamp(ts) {
+    if (!ts) return "";
+    try {
+      return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch (e) { return ""; }
+  }
+
   function parseSessionData() {
     try {
       var encoded = document.getElementById("session-data");
@@ -320,6 +368,198 @@
       return JSON.parse(new TextDecoder("utf-8").decode(bytes));
     } catch (e) {
       return null;
+    }
+  }
+
+  function decodeXmlEntities(text) {
+    return String(text || "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&");
+  }
+
+  function extractXmlTagText(xml, tagName) {
+    var pattern = new RegExp("<" + tagName + ">([\\s\\S]*?)<\\/" + tagName + ">", "i");
+    var match = pattern.exec(xml || "");
+    return match ? decodeXmlEntities(match[1].trim()) : "";
+  }
+
+  function parseAvailableSkillsFromSystemPrompt(systemPrompt) {
+    if (!systemPrompt) return [];
+
+    var outer = /<available_skills>([\s\S]*?)<\/available_skills>/i.exec(systemPrompt);
+    if (!outer) return [];
+
+    var block = outer[1];
+    var skillPattern = /<skill>([\s\S]*?)<\/skill>/gi;
+    var skills = [];
+    var match;
+
+    while ((match = skillPattern.exec(block)) !== null) {
+      var rawSkill = match[1] || "";
+      var name = extractXmlTagText(rawSkill, "name");
+      var description = extractXmlTagText(rawSkill, "description");
+      var location = extractXmlTagText(rawSkill, "location");
+      if (!name) continue;
+      skills.push({ name: name, description: description, location: location });
+    }
+
+    return skills;
+  }
+
+  function injectAvailableSkillsPanel() {
+    var headerContainer = document.getElementById("header-container");
+    if (!headerContainer) return;
+
+    var existing = document.getElementById("webui-skills-list");
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+
+    var sessionData = parseSessionData();
+    var promptForSkills = sessionData && (sessionData.fullSystemPrompt || sessionData.systemPrompt);
+    if (!promptForSkills) return;
+
+    var skills = parseAvailableSkillsFromSystemPrompt(promptForSkills);
+    if (!skills.length) return;
+
+    var panel = document.createElement("div");
+    panel.id = "webui-skills-list";
+    panel.className = "tools-list skills-list";
+
+    var html = '<div class="tools-header skills-header">Available Skills</div><div class="skills-content">';
+    for (var i = 0; i < skills.length; i++) {
+      var skill = skills[i];
+      var hasDetails = !!skill.location;
+      html += '<div class="skill-item' + (hasDetails ? ' has-details' : '') + '">';
+      html += '<span class="skill-item-name">' + shellEscapeHtml(skill.name) + '</span>';
+      if (skill.description) {
+        html += ' - <span class="skill-item-desc">' + shellEscapeHtml(skill.description) + '</span>';
+      }
+      if (hasDetails) {
+        html += ' <span class="skill-details-hint"></span>';
+        html += '<div class="skill-details">';
+        html += '<div class="skill-field"><span class="skill-field-name">location</span> - <span class="skill-field-value">' + shellEscapeHtml(skill.location) + '</span></div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    panel.innerHTML = html;
+
+    var toolPanel = headerContainer.querySelector(".tools-list");
+    if (toolPanel && toolPanel.parentNode === headerContainer) {
+      if (toolPanel.nextSibling) headerContainer.insertBefore(panel, toolPanel.nextSibling);
+      else headerContainer.appendChild(panel);
+    } else {
+      headerContainer.appendChild(panel);
+    }
+
+    var detailItems = panel.querySelectorAll(".skill-item.has-details");
+    for (var j = 0; j < detailItems.length; j++) {
+      detailItems[j].addEventListener("click", function () {
+        if (window.getSelection().toString()) return;
+        this.classList.toggle("details-expanded");
+      });
+    }
+  }
+
+  /**
+   * Render a DOM string for entry types the core template.js skips (returns '' for).
+   * Currently handles: thinking_level_change, session_info.
+   * Returns empty string if there is nothing meaningful to show.
+   */
+  function renderUnrenderedEntry(entry) {
+    var id = "entry-" + entry.id;
+    var ts = shellFormatTimestamp(entry.timestamp);
+    var tsHtml = ts ? '<div class="message-timestamp">' + shellEscapeHtml(ts) + "</div>" : "";
+    switch (entry.type) {
+      case "thinking_level_change":
+        return '<div class="model-change" id="' + id + '">' + tsHtml +
+          'Thinking level: <span class="model-name">' + shellEscapeHtml(entry.thinkingLevel) + "</span></div>";
+      case "session_info":
+        return entry.name
+          ? '<div class="model-change" id="' + id + '">' + tsHtml +
+            'Session: <span class="model-name">' + shellEscapeHtml(entry.name) + "</span></div>"
+          : "";
+      default:
+        return "";
+    }
+  }
+
+  /**
+   * After each navigation, scan for session entries that are on the rendered path but
+   * were silently skipped by the core's renderEntry (it returns '' for several types).
+   * Inject minimal DOM elements for them so they appear on the right-hand side.
+   *
+   * Strategy: find all entry-* elements currently in #messages, then walk parentId
+   * chains to discover gaps — entries that sit between rendered ones in the session
+   * tree but have no DOM element.
+   */
+  function injectUnrenderedEntries() {
+    var messagesEl = document.getElementById("messages");
+    if (!messagesEl) return;
+
+    var sd = parseSessionData();
+    if (!sd || !sd.entries) return;
+
+    // Build id → entry map
+    var byId = {};
+    for (var i = 0; i < sd.entries.length; i++) byId[sd.entries[i].id] = sd.entries[i];
+
+    // Collect rendered entry elements in DOM order
+    var renderedEls = Array.prototype.slice.call(messagesEl.querySelectorAll("[id^='entry-']"));
+    if (renderedEls.length === 0) return;
+
+    var renderedIdList = renderedEls.map(function (el) { return el.id.replace(/^entry-/, ""); });
+    var renderedIdSet = new Set(renderedIdList);
+
+    function injectBefore(entry, referenceEl) {
+      if (renderedIdSet.has(entry.id)) return;
+      var html = renderUnrenderedEntry(entry);
+      if (!html) { renderedIdSet.add(entry.id); return; } // mark as handled even if nothing to show
+      var tmpl = document.createElement("template");
+      tmpl.innerHTML = html.trim();
+      var node = tmpl.content.firstElementChild;
+      if (!node) return;
+      if (referenceEl) messagesEl.insertBefore(node, referenceEl);
+      else messagesEl.appendChild(node);
+      renderedIdSet.add(entry.id);
+    }
+
+    // ── Ancestors of the first rendered entry (walk toward the root) ──────────
+    var firstEntry = byId[renderedIdList[0]];
+    if (firstEntry) {
+      var ancestors = [];
+      var cur = firstEntry;
+      while (cur) {
+        var pid = cur.parentId;
+        if (!pid || pid === cur.id || !byId[pid] || renderedIdSet.has(pid)) break;
+        ancestors.unshift(byId[pid]);
+        cur = byId[pid];
+      }
+      for (var ai = 0; ai < ancestors.length; ai++) injectBefore(ancestors[ai], renderedEls[0]);
+    }
+
+    // ── Gaps between consecutive rendered entries ─────────────────────────────
+    for (var ri = 0; ri < renderedIdList.length - 1; ri++) {
+      var curId = renderedIdList[ri];
+      var nextId = renderedIdList[ri + 1];
+      var nextEl = renderedEls[ri + 1];
+      // Walk up from nextId until we hit curId or a rendered entry
+      var between = [];
+      var cur2 = byId[nextId];
+      while (cur2) {
+        var pid2 = cur2.parentId;
+        if (!pid2 || pid2 === cur2.id || pid2 === curId) break;
+        if (!byId[pid2] || renderedIdSet.has(pid2)) break;
+        between.unshift(byId[pid2]);
+        cur2 = byId[pid2];
+      }
+      for (var bi = 0; bi < between.length; bi++) injectBefore(between[bi], nextEl);
     }
   }
 
@@ -365,6 +605,29 @@
         }
       }
     }
+
+    // IDs are now patched — resolve any pending scroll from a tree click
+    flushPendingScrollTarget();
+  }
+
+  // After patchToolExecutionIds assigns IDs, scroll to + highlight any pending toolResult tree click
+  // (defined before observeAndPatchToolIds so it can be referenced in the debounce callback)
+  function flushPendingScrollTarget() {
+    if (!pendingScrollTarget) return;
+    var targetId = pendingScrollTarget;
+    pendingScrollTarget = null;
+    var el = document.getElementById("entry-" + targetId);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.remove("clicked-highlight-fade");
+    el.classList.add("clicked-highlight");
+    setTimeout(function () {
+      el.classList.remove("clicked-highlight");
+      el.classList.add("clicked-highlight-fade");
+    }, 50);
+    setTimeout(function () {
+      el.classList.remove("clicked-highlight-fade");
+    }, 800);
   }
 
   // Patch after every DOM change in #messages (covers navigateTo re-renders)
@@ -374,11 +637,37 @@
     var timer = null;
     var observer = new MutationObserver(function () {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(patchToolExecutionIds, 10);
+      timer = setTimeout(function () {
+        patchToolExecutionIds();
+        injectUnrenderedEntries();
+        injectAvailableSkillsPanel();
+      }, 10);
     });
     observer.observe(messages, { childList: true, subtree: true });
-    // Also patch immediately
+    // Also run immediately on first load
     patchToolExecutionIds();
+    injectUnrenderedEntries();
+    injectAvailableSkillsPanel();
+  }
+
+  // Intercept tree-node clicks (capture phase, before core handler) to detect toolResult clicks
+  function installToolResultTreeInterceptor() {
+    document.addEventListener("click", function (event) {
+      if (window.getSelection().toString()) return;
+      var el = event.target;
+      var container = document.getElementById("tree-container");
+      if (!container) return;
+      // Walk up to find the .tree-node ancestor
+      while (el && el !== container) {
+        if (el.classList && el.classList.contains("tree-node")) break;
+        el = el.parentNode;
+      }
+      if (!el || el === container || !el.dataset || !el.dataset.id) return;
+      var entryId = el.dataset.id;
+      if (ensureToolResultIdSet().has(entryId)) {
+        pendingScrollTarget = entryId;
+      }
+    }, true /* capture phase — runs before the core tree-node click handler */);
   }
 
   function installToolBlockFade() {
@@ -472,6 +761,7 @@
     injectControlBar();
     injectCopyMarkdownButtons();
     installToolBlockFade();
+    installToolResultTreeInterceptor();
     observeAndPatchToolIds();
     connectEvents();
 
